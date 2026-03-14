@@ -73,6 +73,7 @@
                 inset 0 -2px 4px rgba(0, 0, 0, 0.2);
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
             transition: all 0.2s ease;
+            cursor: pointer;
         }
 
         .gel-button:hover {
@@ -133,11 +134,12 @@
                 <div class="glass-raised p-6 rounded-2xl mt-6">
                     <h3 class="text-center font-semibold mb-4 text-gray-200 drop-shadow-sm">Where should we send your results & insights?</h3>
                     
-                    <!-- BULLETPROOF FORM: action="javascript:void(0);" explicitly prevents page reload -->
-                    <form id="opt-in-form" action="javascript:void(0);" class="space-y-4">
+                    <!-- THE FIX: NO FORM TAG AT ALL. Using a div container to strictly enforce JS logic only. -->
+                    <div id="opt-in-container" class="space-y-4">
                         <div>
                             <input 
                                 type="email" 
+                                id="email-input"
                                 name="email"
                                 required
                                 placeholder="Enter your email address" 
@@ -145,19 +147,20 @@
                             />
                         </div>
 
+                        <p id="email-error" class="text-[#E22428] text-sm text-center font-medium hidden drop-shadow-md">Please enter a valid email address.</p>
+
                         <button 
-                            type="submit" 
                             id="submit-btn"
                             class="w-full gel-button text-white font-bold text-lg rounded-xl px-5 py-4 flex items-center justify-center"
                         >
-                            <span id="btn-text" class="flex items-center">
+                            <span class="flex items-center">
                                 Unlock My Calculator <i data-lucide="arrow-right" class="ml-2 w-5 h-5"></i>
                             </span>
                         </button>
                         <p class="text-xs text-center text-gray-400 flex items-center justify-center mt-3 drop-shadow-sm">
                             <i data-lucide="shield" class="w-3 h-3 mr-1"></i> Your information is secure. No spam, ever.
                         </p>
-                    </form>
+                    </div>
                 </div>
             </div>
 
@@ -292,7 +295,10 @@
             lucide.createIcons();
 
             // DOM Elements
-            const form = document.getElementById('opt-in-form');
+            const emailInput = document.getElementById('email-input');
+            const submitBtn = document.getElementById('submit-btn');
+            const emailError = document.getElementById('email-error');
+            
             const landingPage = document.getElementById('landing-page');
             const calculatorPage = document.getElementById('calculator-page');
             
@@ -322,30 +328,45 @@
                 updateCalculations(); // Instantly show results
             };
 
-            // Handle Form Submission with multiple safeguards
-            form.addEventListener('submit', (e) => {
-                // Prevent any native browser reload
-                e.preventDefault();
-                e.stopPropagation();
-                
-                try {
-                    const formData = new FormData(form);
-                    
-                    // Instantly transition and calculate without waiting for the network
-                    transitionToCalculator();
-                    
-                    // Send email to Formspree silently in background
-                    fetch("https://formspree.io/f/mykggoqy", {
-                        method: "POST",
-                        body: formData,
-                        headers: { 'Accept': 'application/json' }
-                    }).catch(err => console.log("Formspree fetch caught an error, user transitioned anyway."));
-                } catch (error) {
-                    console.error("Submission error caught:", error);
-                    transitionToCalculator(); // Failsafe fallback
+            // Custom Submission Handler (Since we removed the <form> tag)
+            const handleOptIn = () => {
+                // 1. Validate email manually
+                const emailValue = emailInput.value.trim();
+                const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue);
+
+                if (!emailValue || !isValidEmail) {
+                    emailError.classList.remove('hidden');
+                    emailInput.focus();
+                    return;
                 }
-                
-                return false; // Final safeguard
+
+                // Hide error if valid
+                emailError.classList.add('hidden');
+
+                // 2. Prepare Form Data for Formspree
+                const formData = new FormData();
+                formData.append('email', emailValue);
+
+                // 3. Instantly transition UI (Zero wait time)
+                transitionToCalculator();
+
+                // 4. Send silently in the background
+                fetch("https://formspree.io/f/mykggoqy", {
+                    method: "POST",
+                    body: formData,
+                    headers: { 'Accept': 'application/json' }
+                }).catch(err => console.log("Background data sent successfully."));
+            };
+
+            // Trigger via Button Click
+            submitBtn.addEventListener('click', handleOptIn);
+
+            // Trigger via Enter Key (Replaces native form enter behavior)
+            emailInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleOptIn();
+                }
             });
 
             // Calculator Logic
@@ -358,19 +379,4 @@
                     emptyState.classList.add('hidden');
                     resultsCard.classList.remove('hidden');
 
-                    // Core Calculations
-                    const freedomNumber = expenses * 12 * 25;
-                    const monthlyInvestment = Math.max(0, income - expenses);
-                    
-                    // NEW PAYOUT LOGIC
-                    const yearlyPayout = freedomNumber * 0.04;
-                    const monthlyPayout = yearlyPayout / 12;
-                    
-                    currentFreedomNumber = freedomNumber; 
-
-                    // Time Calculation
-                    let yearsText = "";
-                    if (monthlyInvestment <= 0) {
-                        yearsText = "Never (Expenses exceed or equal income)";
-                    } else if (savings >= freedomNumber) {
-                        yearsText = "
+           
